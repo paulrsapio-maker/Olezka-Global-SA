@@ -7,9 +7,33 @@
 [functions]
   external_node_modules = ["express"]
   node_bundler = "esbuild"
-  
+
 [[redirects]]
   force = true
   from = "/api/*"
   status = 200
   to = "/.netlify/functions/api/:splat"
+
+# SPA fallback so new client builds are always served
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Prevent HTML from being cached, allow long cache for hashed assets
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    cache-control = "no-cache, no-store, must-revalidate"
+    pragma = "no-cache"
+    expires = "0"
+
+[[headers]]
+  for = "/*.js"
+  [headers.values]
+    cache-control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/*.css"
+  [headers.values]
+    cache-control = "public, max-age=31536000, immutable"
