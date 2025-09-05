@@ -257,6 +257,16 @@ export default function Index() {
     doc.rect(0, 0, width, height, "F");
   }
 
+  function loadImage(url: string): Promise<HTMLImageElement> {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => resolve(img);
+      img.onerror = (e) => reject(e);
+      img.src = url;
+    });
+  }
+
   async function onSubmit(values: FormValues) {
     const submission: AssessmentSubmission = {
       organization: values.organization,
@@ -276,6 +286,38 @@ export default function Index() {
     const paintedPages = new Set<number>();
 
     // Background (black)
+    drawPdfBackground(doc);
+    paintedPages.add((doc as any).internal.getCurrentPageInfo().pageNumber);
+
+    // --- Title page ---
+    try {
+      const logoUrl = "https://cdn.builder.io/api/v1/image/assets%2F74452fbd65844fa092de7a3dcf4c1086%2Fdfa2f0d5c3b54a6583627c5690a0e221?format=webp&width=800";
+      const img = await loadImage(logoUrl);
+      const pw = doc.internal.pageSize.getWidth();
+      const ph = doc.internal.pageSize.getHeight();
+      const imgW = Math.min(260, pw - 120);
+      const ratio = img.height / img.width;
+      const imgH = imgW * ratio;
+      const x = (pw - imgW) / 2;
+      const y = ph * 0.25;
+      // Draw logo
+      // @ts-expect-error - WEBP is supported at runtime
+      doc.addImage(img, "WEBP", x, y, imgW, imgH);
+      // Title text centered
+      doc.setTextColor(pr, pg, pb);
+      doc.setFontSize(22);
+      doc.text("Olezka Global", pw / 2, y + imgH + 48, { align: "center" });
+      doc.setFontSize(14);
+      doc.text(
+        "Cloud Security Posture Assessment",
+        pw / 2,
+        y + imgH + 72,
+        { align: "center" },
+      );
+    } catch {}
+
+    // Start content on a new page
+    doc.addPage();
     drawPdfBackground(doc);
     paintedPages.add((doc as any).internal.getCurrentPageInfo().pageNumber);
 
@@ -368,6 +410,36 @@ export default function Index() {
         cursorY = 60;
       }
     }
+
+    // --- Summary page ---
+    const totalQuestions = submission.responses.length;
+    const totalScore = submission.responses.reduce((acc, r) => acc + r.maturity, 0);
+    const maxScore = totalQuestions * 4;
+    const avg = totalQuestions ? totalScore / totalQuestions : 0;
+    const pct = Math.round((avg / 4) * 100);
+
+    doc.addPage();
+    drawPdfBackground(doc);
+    paintedPages.add((doc as any).internal.getCurrentPageInfo().pageNumber);
+
+    doc.setFontSize(18);
+    doc.setTextColor(pr, pg, pb);
+    doc.text("Overall Maturity Score", 40, 60);
+
+    // Summary box
+    doc.setDrawColor(pr, pg, pb);
+    doc.setFillColor(pr, pg, pb);
+    // transparent teal card
+    // @ts-expect-error - GState exists at runtime
+    doc.setGState(new (doc as any).GState({ opacity: 0.12 }));
+    doc.roundedRect(32, 80, 530, 120, 6, 6, "F");
+    // @ts-expect-error - GState exists at runtime
+    (doc as any).setGState(new (doc as any).GState({ opacity: 1 }));
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(12);
+    doc.text(`Total Points: ${totalScore} / ${maxScore}`, 44, 110);
+    doc.text(`Average Rating (0-4): ${avg.toFixed(2)}`, 44, 136);
+    doc.text(`Overall Percentage: ${pct}%`, 44, 162);
 
     doc.save("Olezka-Assessment.pdf");
     toast.success("PDF downloaded");
