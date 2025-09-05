@@ -637,7 +637,8 @@ export default function Index() {
       <footer className="border-t mt-10">
         <div className="container mx-auto px-4 py-6 text-xs text-muted-foreground flex items-center justify-between">
           <span className="text-primary">© {new Date().getFullYear()} Olezka Global</span>
-          <span>Secure by design</span>
+          <a href="https://www.olezkaglobal.com" className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">www.olezkaglobal.com</a>
+          <span className="text-primary">Secure by design</span>
         </div>
       </footer>
     </div>
