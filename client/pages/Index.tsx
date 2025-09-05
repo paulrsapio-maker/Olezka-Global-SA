@@ -293,7 +293,7 @@ export default function Index() {
     (doc as any).setGState(new (doc as any).GState({ opacity: 0.12 }));
     doc.roundedRect(32, 85, 530, 48, 6, 6, "F");
     (doc as any).setGState(new (doc as any).GState({ opacity: 1 }));
-    doc.setTextColor(pr, pg, pb);
+    doc.setTextColor(255, 255, 255);
     doc.text(`Organization: ${submission.organization || "-"}`, 44, 110);
     doc.text(`Contact Email: ${submission.contactEmail || "-"}`, 300, 110);
 
@@ -327,8 +327,8 @@ export default function Index() {
       autoTable(doc, {
         startY: cursorY + 14,
         theme: "grid",
-        headStyles: { fillColor: [0, 0, 0], textColor: [pr, pg, pb] },
-        bodyStyles: { cellPadding: 6, textColor: [pr, pg, pb], fillColor: [0, 0, 0] },
+        headStyles: { fillColor: [0, 0, 0], textColor: [255, 255, 255] },
+        bodyStyles: { cellPadding: 6, textColor: [255, 255, 255], fillColor: [0, 0, 0] },
         styles: { fontSize: 10, lineColor: [pr, pg, pb], lineWidth: 0.5, fillColor: [0, 0, 0] },
         alternateRowStyles: { fillColor: [0, 0, 0] },
         columnStyles: {
