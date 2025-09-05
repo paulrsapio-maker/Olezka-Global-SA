@@ -280,16 +280,16 @@ export default function Index() {
     doc.setTextColor(pr, pg, pb);
     doc.text("Olezka Global", 40, 50);
     doc.setFontSize(12);
-    doc.setTextColor(180);
+    doc.setTextColor(pr, pg, pb);
     doc.text("Cloud Security Posture Assessment", 40, 70);
 
     // Org info box
     doc.setDrawColor(pr, pg, pb);
     doc.setFillColor(pr, pg, pb);
-    doc.setGState(new (doc as any).GState({ opacity: 0.08 }));
+    (doc as any).setGState(new (doc as any).GState({ opacity: 0.12 }));
     doc.roundedRect(32, 85, 530, 48, 6, 6, "F");
     (doc as any).setGState(new (doc as any).GState({ opacity: 1 }));
-    doc.setTextColor(240);
+    doc.setTextColor(pr, pg, pb);
     doc.text(`Organization: ${submission.organization || "-"}`, 44, 110);
     doc.text(`Contact Email: ${submission.contactEmail || "-"}`, 300, 110);
 
@@ -312,11 +312,10 @@ export default function Index() {
 
       // Section header
       doc.setFillColor(pr, pg, pb);
+      (doc as any).setGState(new (doc as any).GState({ opacity: 0.15 }));
       doc.rect(32, cursorY - 18, 530, 28, "F");
-      doc.setTextColor(0);
-      doc.setTextColor(20, 24, 24);
-      doc.setTextColor(0);
-      doc.setTextColor(255);
+      (doc as any).setGState(new (doc as any).GState({ opacity: 1 }));
+      doc.setTextColor(pr, pg, pb);
       doc.setFontSize(13);
       doc.text(fn, 44, cursorY);
 
@@ -324,8 +323,8 @@ export default function Index() {
       autoTable(doc, {
         startY: cursorY + 14,
         theme: "grid",
-        headStyles: { fillColor: [pr, pg, pb], textColor: 255 },
-        bodyStyles: { cellPadding: 6, textColor: 230, fillColor: [0, 0, 0] },
+        headStyles: { fillColor: [0, 0, 0], textColor: [pr, pg, pb] },
+        bodyStyles: { cellPadding: 6, textColor: [pr, pg, pb], fillColor: [0, 0, 0] },
         styles: { fontSize: 10, lineColor: [pr, pg, pb], lineWidth: 0.5, fillColor: [0, 0, 0] },
         alternateRowStyles: { fillColor: [0, 0, 0] },
         columnStyles: {
@@ -341,6 +340,14 @@ export default function Index() {
           it.response || "",
           String(it.maturity),
         ]),
+        willDrawCell: (data: any) => {
+          if (data.section === 'head') {
+            doc.setFillColor(pr, pg, pb);
+            (doc as any).setGState(new (doc as any).GState({ opacity: 0.15 }));
+            doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height, 'F');
+            (doc as any).setGState(new (doc as any).GState({ opacity: 1 }));
+          }
+        },
         didDrawPage: () => {
           drawPdfBackground(doc);
         },
