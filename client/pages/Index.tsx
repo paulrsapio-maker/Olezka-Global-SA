@@ -636,7 +636,7 @@ export default function Index() {
 
       <footer className="border-t mt-10">
         <div className="container mx-auto px-4 py-6 text-xs text-muted-foreground flex items-center justify-between">
-          <span>© {new Date().getFullYear()} Olezka Global</span>
+          <span className="text-primary">© {new Date().getFullYear()} Olezka Global</span>
           <span>Secure by design</span>
         </div>
       </footer>
