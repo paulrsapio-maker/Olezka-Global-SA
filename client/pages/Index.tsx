@@ -261,10 +261,29 @@ export default function Index() {
     return new Promise((resolve, reject) => {
       const img = new Image();
       img.crossOrigin = "anonymous";
+      img.decoding = "async";
+      img.loading = "eager" as any;
       img.onload = () => resolve(img);
       img.onerror = (e) => reject(e);
       img.src = url;
     });
+  }
+
+  async function loadImageAsPngDataUrl(url: string): Promise<{ dataUrl: string; width: number; height: number }> {
+    const img = await loadImage(url);
+    const canvas = document.createElement("canvas");
+    // Render at 2x for crisper downscaling in PDF
+    const scale = 2;
+    canvas.width = img.naturalWidth * scale;
+    canvas.height = img.naturalHeight * scale;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Canvas 2D context not available");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high" as CanvasImageSmoothingQuality;
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL("image/png");
+    return { dataUrl, width: img.naturalWidth, height: img.naturalHeight };
   }
 
   async function onSubmit(values: FormValues) {
@@ -291,18 +310,17 @@ export default function Index() {
 
     // --- Title page ---
     try {
-      const logoUrl = "https://cdn.builder.io/api/v1/image/assets%2F74452fbd65844fa092de7a3dcf4c1086%2Fdfa2f0d5c3b54a6583627c5690a0e221?format=webp&width=800";
-      const img = await loadImage(logoUrl);
+      const logoUrl = "https://cdn.builder.io/api/v1/image/assets%2F74452fbd65844fa092de7a3dcf4c1086%2Fdfa2f0d5c3b54a6583627c5690a0e221?format=webp&width=1600";
+      const { dataUrl, width: iw, height: ih } = await loadImageAsPngDataUrl(logoUrl);
       const pw = doc.internal.pageSize.getWidth();
       const ph = doc.internal.pageSize.getHeight();
-      const imgW = Math.min(260, pw - 120);
-      const ratio = img.height / img.width;
+      const imgW = Math.min(300, pw - 120);
+      const ratio = ih / iw;
       const imgH = imgW * ratio;
       const x = (pw - imgW) / 2;
       const y = ph * 0.25;
-      // Draw logo
-      // @ts-expect-error - WEBP is supported at runtime
-      doc.addImage(img, "WEBP", x, y, imgW, imgH);
+      // Draw high-quality PNG (preserves transparency, smoother scaling)
+      doc.addImage(dataUrl, "PNG", x, y, imgW, imgH);
       // Title text centered
       doc.setTextColor(pr, pg, pb);
       doc.setFontSize(22);
