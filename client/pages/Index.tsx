@@ -257,6 +257,35 @@ export default function Index() {
     doc.rect(0, 0, width, height, "F");
   }
 
+  function loadImage(url: string): Promise<HTMLImageElement> {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.decoding = "async";
+      img.loading = "eager" as any;
+      img.onload = () => resolve(img);
+      img.onerror = (e) => reject(e);
+      img.src = url;
+    });
+  }
+
+  async function loadImageAsPngDataUrl(url: string): Promise<{ dataUrl: string; width: number; height: number }> {
+    const img = await loadImage(url);
+    const canvas = document.createElement("canvas");
+    // Render at 2x for crisper downscaling in PDF
+    const scale = 2;
+    canvas.width = img.naturalWidth * scale;
+    canvas.height = img.naturalHeight * scale;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Canvas 2D context not available");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high" as CanvasImageSmoothingQuality;
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL("image/png");
+    return { dataUrl, width: img.naturalWidth, height: img.naturalHeight };
+  }
+
   async function onSubmit(values: FormValues) {
     const submission: AssessmentSubmission = {
       organization: values.organization,
@@ -272,24 +301,59 @@ export default function Index() {
     const doc = new jsPDF({ unit: "pt", format: "a4" });
     const [pr, pg, pb] = getBrandRgb();
 
+    // Track which pages have had backgrounds painted
+    const paintedPages = new Set<number>();
+
     // Background (black)
     drawPdfBackground(doc);
+    paintedPages.add((doc as any).internal.getCurrentPageInfo().pageNumber);
+
+    // --- Title page ---
+    try {
+      const logoUrl = "https://cdn.builder.io/api/v1/image/assets%2F74452fbd65844fa092de7a3dcf4c1086%2Fdfa2f0d5c3b54a6583627c5690a0e221?format=webp&width=1600";
+      const { dataUrl, width: iw, height: ih } = await loadImageAsPngDataUrl(logoUrl);
+      const pw = doc.internal.pageSize.getWidth();
+      const ph = doc.internal.pageSize.getHeight();
+      const imgW = Math.min(300, pw - 120);
+      const ratio = ih / iw;
+      const imgH = imgW * ratio;
+      const x = (pw - imgW) / 2;
+      const y = ph * 0.25;
+      // Draw high-quality PNG (preserves transparency, smoother scaling)
+      doc.addImage(dataUrl, "PNG", x, y, imgW, imgH);
+      // Title text centered
+      doc.setTextColor(pr, pg, pb);
+      doc.setFontSize(22);
+      doc.text("Olezka Global", pw / 2, y + imgH + 48, { align: "center" });
+      doc.setFontSize(14);
+      doc.text(
+        "Cloud Security Posture Assessment",
+        pw / 2,
+        y + imgH + 72,
+        { align: "center" },
+      );
+    } catch {}
+
+    // Start content on a new page
+    doc.addPage();
+    drawPdfBackground(doc);
+    paintedPages.add((doc as any).internal.getCurrentPageInfo().pageNumber);
 
     // Title
     doc.setFontSize(20);
     doc.setTextColor(pr, pg, pb);
     doc.text("Olezka Global", 40, 50);
     doc.setFontSize(12);
-    doc.setTextColor(180);
+    doc.setTextColor(pr, pg, pb);
     doc.text("Cloud Security Posture Assessment", 40, 70);
 
     // Org info box
     doc.setDrawColor(pr, pg, pb);
     doc.setFillColor(pr, pg, pb);
-    doc.setGState(new (doc as any).GState({ opacity: 0.08 }));
+    (doc as any).setGState(new (doc as any).GState({ opacity: 0.12 }));
     doc.roundedRect(32, 85, 530, 48, 6, 6, "F");
     (doc as any).setGState(new (doc as any).GState({ opacity: 1 }));
-    doc.setTextColor(240);
+    doc.setTextColor(255, 255, 255);
     doc.text(`Organization: ${submission.organization || "-"}`, 44, 110);
     doc.text(`Contact Email: ${submission.contactEmail || "-"}`, 300, 110);
 
@@ -312,11 +376,10 @@ export default function Index() {
 
       // Section header
       doc.setFillColor(pr, pg, pb);
+      (doc as any).setGState(new (doc as any).GState({ opacity: 0.15 }));
       doc.rect(32, cursorY - 18, 530, 28, "F");
-      doc.setTextColor(0);
-      doc.setTextColor(20, 24, 24);
-      doc.setTextColor(0);
-      doc.setTextColor(255);
+      (doc as any).setGState(new (doc as any).GState({ opacity: 1 }));
+      doc.setTextColor(pr, pg, pb);
       doc.setFontSize(13);
       doc.text(fn, 44, cursorY);
 
@@ -324,8 +387,8 @@ export default function Index() {
       autoTable(doc, {
         startY: cursorY + 14,
         theme: "grid",
-        headStyles: { fillColor: [pr, pg, pb], textColor: 255 },
-        bodyStyles: { cellPadding: 6, textColor: 230, fillColor: [0, 0, 0] },
+        headStyles: { fillColor: [0, 0, 0], textColor: [255, 255, 255] },
+        bodyStyles: { cellPadding: 6, textColor: [255, 255, 255], fillColor: [0, 0, 0] },
         styles: { fontSize: 10, lineColor: [pr, pg, pb], lineWidth: 0.5, fillColor: [0, 0, 0] },
         alternateRowStyles: { fillColor: [0, 0, 0] },
         columnStyles: {
@@ -341,8 +404,19 @@ export default function Index() {
           it.response || "",
           String(it.maturity),
         ]),
-        didDrawPage: () => {
-          drawPdfBackground(doc);
+        willDrawCell: (data: any) => {
+          // Paint page background BEFORE any cell on a new page
+          const page = (doc as any).internal.getCurrentPageInfo().pageNumber;
+          if (!paintedPages.has(page)) {
+            drawPdfBackground(doc);
+            paintedPages.add(page);
+          }
+          if (data.section === 'head') {
+            doc.setFillColor(pr, pg, pb);
+            (doc as any).setGState(new (doc as any).GState({ opacity: 0.15 }));
+            doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height, 'F');
+            (doc as any).setGState(new (doc as any).GState({ opacity: 1 }));
+          }
         },
       });
 
@@ -350,9 +424,40 @@ export default function Index() {
       if (cursorY > 720) {
         doc.addPage();
         drawPdfBackground(doc);
+        paintedPages.add((doc as any).internal.getCurrentPageInfo().pageNumber);
         cursorY = 60;
       }
     }
+
+    // --- Summary page ---
+    const totalQuestions = submission.responses.length;
+    const totalScore = submission.responses.reduce((acc, r) => acc + r.maturity, 0);
+    const maxScore = totalQuestions * 4;
+    const avg = totalQuestions ? totalScore / totalQuestions : 0;
+    const pct = Math.round((avg / 4) * 100);
+
+    doc.addPage();
+    drawPdfBackground(doc);
+    paintedPages.add((doc as any).internal.getCurrentPageInfo().pageNumber);
+
+    doc.setFontSize(18);
+    doc.setTextColor(pr, pg, pb);
+    doc.text("Overall Maturity Score", 40, 60);
+
+    // Summary box
+    doc.setDrawColor(pr, pg, pb);
+    doc.setFillColor(pr, pg, pb);
+    // transparent teal card
+    // @ts-expect-error - GState exists at runtime
+    doc.setGState(new (doc as any).GState({ opacity: 0.12 }));
+    doc.roundedRect(32, 80, 530, 120, 6, 6, "F");
+    // @ts-expect-error - GState exists at runtime
+    (doc as any).setGState(new (doc as any).GState({ opacity: 1 }));
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(12);
+    doc.text(`Total Points: ${totalScore} / ${maxScore}`, 44, 110);
+    doc.text(`Average Rating (0-4): ${avg.toFixed(2)}`, 44, 136);
+    doc.text(`Overall Percentage: ${pct}%`, 44, 162);
 
     doc.save("Olezka-Assessment.pdf");
     toast.success("PDF downloaded");
@@ -531,7 +636,7 @@ export default function Index() {
 
       <footer className="border-t mt-10">
         <div className="container mx-auto px-4 py-6 text-xs text-muted-foreground flex items-center justify-between">
-          <span>© {new Date().getFullYear()} Olezka Global</span>
+          <span className="text-primary">© {new Date().getFullYear()} Olezka Global</span>
           <span>Secure by design</span>
         </div>
       </footer>
