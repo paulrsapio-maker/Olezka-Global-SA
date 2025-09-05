@@ -272,8 +272,12 @@ export default function Index() {
     const doc = new jsPDF({ unit: "pt", format: "a4" });
     const [pr, pg, pb] = getBrandRgb();
 
+    // Track which pages have had backgrounds painted
+    const paintedPages = new Set<number>();
+
     // Background (black)
     drawPdfBackground(doc);
+    paintedPages.add((doc as any).internal.getCurrentPageInfo().pageNumber);
 
     // Title
     doc.setFontSize(20);
@@ -341,6 +345,12 @@ export default function Index() {
           String(it.maturity),
         ]),
         willDrawCell: (data: any) => {
+          // Paint page background BEFORE any cell on a new page
+          const page = (doc as any).internal.getCurrentPageInfo().pageNumber;
+          if (!paintedPages.has(page)) {
+            drawPdfBackground(doc);
+            paintedPages.add(page);
+          }
           if (data.section === 'head') {
             doc.setFillColor(pr, pg, pb);
             (doc as any).setGState(new (doc as any).GState({ opacity: 0.15 }));
@@ -348,15 +358,13 @@ export default function Index() {
             (doc as any).setGState(new (doc as any).GState({ opacity: 1 }));
           }
         },
-        didDrawPage: () => {
-          drawPdfBackground(doc);
-        },
       });
 
       cursorY = (doc as any).lastAutoTable.finalY + 28;
       if (cursorY > 720) {
         doc.addPage();
         drawPdfBackground(doc);
+        paintedPages.add((doc as any).internal.getCurrentPageInfo().pageNumber);
         cursorY = 60;
       }
     }
