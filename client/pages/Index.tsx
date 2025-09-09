@@ -213,8 +213,8 @@ export default function Index() {
   const { fields } = useFieldArray({ name: "responses", control });
 
   function addRealData() {
-    setValue("organization", "Contoso Education");
-    setValue("contactEmail", "secops@contoso.edu");
+    setValue("organization", "Contoso Education", { shouldDirty: true, shouldValidate: true });
+    setValue("contactEmail", "secops@contoso.edu", { shouldDirty: true, shouldValidate: true });
 
     const sampleById: Record<string, string> = {
       "GO.SC-1": "Cybersecurity risk is governed by the IT Governance Committee chaired by the CIO. Cloud risk is on the board agenda twice per year with KPIs covering MFA adoption, privileged access reviews, and incident MTTR.",
