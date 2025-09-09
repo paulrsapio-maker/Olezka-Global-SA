@@ -272,7 +272,6 @@ export default function Index() {
   async function loadImageAsPngDataUrl(url: string): Promise<{ dataUrl: string; width: number; height: number }> {
     const img = await loadImage(url);
     const canvas = document.createElement("canvas");
-    // Render at 2x for crisper downscaling in PDF
     const scale = 2;
     canvas.width = img.naturalWidth * scale;
     canvas.height = img.naturalHeight * scale;
@@ -284,6 +283,36 @@ export default function Index() {
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
     const dataUrl = canvas.toDataURL("image/png");
     return { dataUrl, width: img.naturalWidth, height: img.naturalHeight };
+  }
+
+  function writeParagraph(doc: jsPDF, text: string, x: number, y: number, maxWidth: number, lineHeight = 14): number {
+    const lines = doc.splitTextToSize(text || "", maxWidth) as string[];
+    lines.forEach((line, i) => doc.text(line, x, y + i * lineHeight));
+    return y + lines.length * lineHeight;
+  }
+
+  function drawFunctionDashboard(doc: jsPDF, averages: Record<string, number>, x: number, y: number, width: number, barHeight: number, color: [number, number, number]) {
+    const entries = Object.entries(averages);
+    const gap = 10;
+    const maxScore = 4;
+    for (let i = 0; i < entries.length; i++) {
+      const [label, score] = entries[i];
+      const pct = Math.max(0, Math.min(1, score / maxScore));
+      const bw = width * pct;
+      const by = y + i * (barHeight + gap);
+      doc.setDrawColor(color[0], color[1], color[2]);
+      doc.setTextColor(color[0], color[1], color[2]);
+      doc.setFillColor(30, 30, 30);
+      doc.roundedRect(x, by, width, barHeight, 3, 3, "F");
+      doc.setFillColor(color[0], color[1], color[2]);
+      // @ts-expect-error GState exists at runtime
+      doc.setGState(new (doc as any).GState({ opacity: 0.35 }));
+      doc.roundedRect(x, by, bw, barHeight, 3, 3, "F");
+      // @ts-expect-error GState exists at runtime
+      (doc as any).setGState(new (doc as any).GState({ opacity: 1 }));
+      doc.setFontSize(10);
+      doc.text(`${label} (${score.toFixed(2)}/4)`, x + 6, by + barHeight - 4);
+    }
   }
 
   async function onSubmit(values: FormValues) {
@@ -358,6 +387,125 @@ export default function Index() {
     doc.text(`Contact Email: ${submission.contactEmail || "-"}`, 300, 110);
 
     let cursorY = 150;
+
+    // --- AI Executive Summary ---
+    try {
+      const aiResp = await fetch("/api/assessments/generate-report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(submission),
+      });
+      if (!aiResp.ok) {
+        await aiResp.text();
+        toast.error("AI analysis failed");
+      } else {
+        const { report, metrics } = (await aiResp.json()) as any;
+        doc.setFontSize(16);
+        doc.setTextColor(pr, pg, pb);
+        doc.text("Executive Summary", 40, cursorY);
+        doc.setFontSize(11);
+        doc.setTextColor(255, 255, 255);
+        cursorY = writeParagraph(doc, report.summary || "", 40, cursorY + 20, 520, 14);
+
+        if (report.environment) {
+          doc.setFontSize(12);
+          doc.setTextColor(pr, pg, pb);
+          doc.text("Environment", 40, cursorY + 18);
+          doc.setTextColor(255, 255, 255);
+          cursorY = writeParagraph(doc, String(report.environment), 40, cursorY + 34, 520);
+        }
+
+        if (Array.isArray(report.strengths) && report.strengths.length) {
+          doc.setFontSize(12);
+          doc.setTextColor(pr, pg, pb);
+          doc.text("Key Strengths", 40, cursorY + 18);
+          doc.setTextColor(255, 255, 255);
+          let y = cursorY + 34;
+          report.strengths.forEach((s: string) => {
+            const text = `• ${s}`;
+            y = writeParagraph(doc, text, 44, y, 516);
+          });
+          cursorY = y;
+        }
+
+        if (Array.isArray(report.gaps) && report.gaps.length) {
+          doc.setFontSize(12);
+          doc.setTextColor(pr, pg, pb);
+          doc.text("Identified Gaps & Risks", 40, cursorY + 18);
+          doc.setTextColor(255, 255, 255);
+          let y = cursorY + 34;
+          report.gaps.slice(0, 6).forEach((r: any) => {
+            y = writeParagraph(doc, `• ${r.name} — ${r.description || ""}`, 44, y, 516);
+          });
+          cursorY = y;
+        }
+
+        doc.addPage();
+        drawPdfBackground(doc);
+        paintedPages.add((doc as any).internal.getCurrentPageInfo().pageNumber);
+        cursorY = 60;
+
+        doc.setFontSize(12);
+        doc.setTextColor(pr, pg, pb);
+        doc.text("Compliance Alignment (NIST CSF)", 40, cursorY);
+        doc.setTextColor(255, 255, 255);
+        cursorY = writeParagraph(doc, report.compliance || "", 40, cursorY + 16, 520);
+
+        if (Array.isArray(report.recommendations) && report.recommendations.length) {
+          doc.setFontSize(12);
+          doc.setTextColor(pr, pg, pb);
+          doc.text("Strategic Recommendations", 40, cursorY + 18);
+          doc.setTextColor(255, 255, 255);
+          let y = cursorY + 34;
+          report.recommendations.forEach((rec: any) => {
+            const item = typeof rec === "string" ? rec : rec.action;
+            y = writeParagraph(doc, `• ${item}`, 44, y, 516);
+          });
+          cursorY = y;
+        }
+
+        if (Array.isArray(report.gaps) && report.gaps.length) {
+          doc.setFontSize(12);
+          doc.setTextColor(pr, pg, pb);
+          doc.text("Risk Matrix", 40, cursorY + 24);
+          autoTable(doc, {
+            startY: cursorY + 30,
+            theme: "grid",
+            headStyles: { fillColor: [0, 0, 0], textColor: [255, 255, 255] },
+            bodyStyles: { cellPadding: 6, textColor: [255, 255, 255], fillColor: [0, 0, 0] },
+            styles: { fontSize: 10, lineColor: [pr, pg, pb], lineWidth: 0.5, fillColor: [0, 0, 0] },
+            head: [["Risk", "Likelihood", "Impact", "Rating"]],
+            body: report.gaps.map((g: any) => [g.name, g.likelihood || "Medium", g.impact || "Medium", g.rating || "Medium"]),
+            willDrawCell: (data: any) => {
+              const page = (doc as any).internal.getCurrentPageInfo().pageNumber;
+              if (!paintedPages.has(page)) {
+                drawPdfBackground(doc);
+                paintedPages.add(page);
+              }
+            },
+          });
+          cursorY = (doc as any).lastAutoTable.finalY + 10;
+        }
+
+        doc.setFontSize(12);
+        doc.setTextColor(pr, pg, pb);
+        doc.text("Dashboard (NIST Function Averages)", 40, cursorY + 24);
+        drawFunctionDashboard(doc, metrics?.functionAverages || {}, 40, cursorY + 34, 520, 14, [pr, pg, pb]);
+        cursorY = cursorY + 34 + (Object.keys(metrics?.functionAverages || {}).length || 6) * 24;
+
+        doc.addPage();
+        drawPdfBackground(doc);
+        paintedPages.add((doc as any).internal.getCurrentPageInfo().pageNumber);
+        cursorY = 60;
+        doc.setFontSize(12);
+        doc.setTextColor(pr, pg, pb);
+        doc.text("Conclusion & Next Steps", 40, cursorY);
+        doc.setTextColor(255, 255, 255);
+        cursorY = writeParagraph(doc, report.conclusion || "", 40, cursorY + 16, 520);
+      }
+    } catch (e) {
+      // Fallback: continue without AI content
+    }
 
     const functions: NistFunction[] = [
       "GOVERN",
