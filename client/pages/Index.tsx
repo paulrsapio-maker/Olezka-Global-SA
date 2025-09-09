@@ -427,12 +427,30 @@ export default function Index() {
     const total = Object.values(counts.inherent).reduce((a, b) => a + b, 0) || 1;
     const toRows = (obj: Record<string, number>) => counts.levels.map(l => [l, String(obj[l] || 0), `${((100 * (obj[l] || 0)) / total).toFixed(2)}%`]);
 
+    const pageHeight = (doc as any).internal.pageSize.getHeight();
+    const ensureSpace = (y: number, needed: number) => {
+      if (y + needed > pageHeight - 40) {
+        doc.addPage();
+        drawPdfBackground(doc);
+        paintedPages.add((doc as any).internal.getCurrentPageInfo().pageNumber);
+        return 60;
+      }
+      return y;
+    };
+
     doc.setFontSize(12);
     doc.setTextColor(pr, pg, pb);
     doc.text("Risk Dashboards", x, startY);
 
+    // Inherent risk section heading
+    let y = startY + 10;
+    y = ensureSpace(y, 24);
+    doc.setFontSize(11);
+    doc.setTextColor(255, 255, 255);
+    doc.text("• Inherent Risk (Before Controls)", x, y);
+
     autoTable(doc, {
-      startY: startY + 10,
+      startY: y + 6,
       theme: "grid",
       headStyles: { fillColor: [0, 0, 0], textColor: [255, 255, 255] },
       bodyStyles: { cellPadding: 6, textColor: [255, 255, 255], fillColor: [0, 0, 0] },
@@ -445,8 +463,15 @@ export default function Index() {
       },
     });
 
+    // Residual risk section heading – move to next page if needed BEFORE printing heading
+    y = (doc as any).lastAutoTable.finalY + 12;
+    y = ensureSpace(y, 24);
+    doc.setFontSize(11);
+    doc.setTextColor(255, 255, 255);
+    doc.text("• Residual Risk (After Controls)", x, y);
+
     autoTable(doc, {
-      startY: (doc as any).lastAutoTable.finalY + 12,
+      startY: y + 6,
       theme: "grid",
       headStyles: { fillColor: [0, 0, 0], textColor: [255, 255, 255] },
       bodyStyles: { cellPadding: 6, textColor: [255, 255, 255], fillColor: [0, 0, 0] },
