@@ -992,11 +992,16 @@ export default function Index() {
                               <Select
                                 defaultValue={`${fields[idx]?.maturity ?? 0}`}
                                 onValueChange={(v) => {
-                                  // React Hook Form manual set using hidden input binding
+                                  const num = Number(v) as 0 | 1 | 2 | 3 | 4;
+                                  setValue(`responses.${idx}.maturity` as const, num, { shouldDirty: true, shouldValidate: true });
                                   const input = document.getElementById(
                                     `responses.${idx}.maturity-hidden`,
                                   ) as HTMLInputElement | null;
-                                  if (input) input.value = v;
+                                  if (input) {
+                                    input.value = String(num);
+                                    input.dispatchEvent(new Event("input", { bubbles: true }));
+                                    input.dispatchEvent(new Event("change", { bubbles: true }));
+                                  }
                                 }}
                               >
                                 <SelectTrigger>
