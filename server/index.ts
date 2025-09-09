@@ -3,6 +3,7 @@ import express from "express";
 import cors from "cors";
 import { handleDemo } from "./routes/demo";
 import { submitAssessment } from "./routes/assessments";
+import { generateAssessmentReport } from "./routes/ai-report";
 
 export function createServer() {
   const app = express();
@@ -20,6 +21,7 @@ export function createServer() {
 
   app.get("/api/demo", handleDemo);
   app.post("/api/assessments", submitAssessment);
+  app.post("/api/assessments/generate-report", generateAssessmentReport);
 
   return app;
 }
