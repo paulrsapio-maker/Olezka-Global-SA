@@ -255,10 +255,14 @@ export default function Index() {
     questions.forEach((q, i) => {
       const txt = sampleById[q.id] || `Response for ${q.id}`;
       const m = maturityById[q.id] ?? 2;
-      setValue(`responses.${i}.response` as const, txt);
-      setValue(`responses.${i}.maturity` as const, m);
+      setValue(`responses.${i}.response` as const, txt, { shouldDirty: true, shouldValidate: true });
+      setValue(`responses.${i}.maturity` as const, m, { shouldDirty: true, shouldValidate: true });
       const hidden = document.getElementById(`responses.${i}.maturity-hidden`) as HTMLInputElement | null;
-      if (hidden) hidden.value = String(m);
+      if (hidden) {
+        hidden.value = String(m);
+        hidden.dispatchEvent(new Event("input", { bubbles: true }));
+        hidden.dispatchEvent(new Event("change", { bubbles: true }));
+      }
     });
   }
 
