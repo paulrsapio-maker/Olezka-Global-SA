@@ -212,12 +212,50 @@ export default function Index() {
 
   const { fields } = useFieldArray({ name: "responses", control });
 
-  function addTestData() {
-    setValue("organization", "Acme University");
-    setValue("contactEmail", "security@acme.edu");
+  function addRealData() {
+    setValue("organization", "Contoso Education");
+    setValue("contactEmail", "secops@contoso.edu");
+
+    const sampleById: Record<string, string> = {
+      "GO.SC-1": "Cybersecurity risk is governed by the IT Governance Committee chaired by the CIO. Cloud risk is on the board agenda twice per year with KPIs covering MFA adoption, privileged access reviews, and incident MTTR.",
+      "GO.RM-1": "Risk tolerance is documented in the Enterprise Risk Register. For cloud services we target RTO ≤ 8 hours and RPO ≤ 4 hours for Tier-1 workloads; high-risk changes require CAB approval.",
+      "ID.AM-1": "We operate two Azure AD tenants and three subscriptions (Prod, NonProd, Sandbox). Resources are tagged with Owner, DataClass, and Criticality; inventory is exported weekly to Log Analytics.",
+      "ID.AM-2": "Mission-critical apps include SIS on Azure SQL, LMS on AKS, and O365 (Exchange, SharePoint, OneDrive, Teams). Business apps are tracked in a CMDB with dependency maps.",
+      "ID.AM-3": "Data owners are assigned for each SharePoint site and OneDrive. Sensitive data is defined in the Data Classification Policy (Public, Internal, Confidential, Restricted).",
+      "ID.BE-3": "If the Azure-based student database is unavailable for 24 hours, enrollment, grading, and attendance are disrupted; estimated impact ~$250k and reputational risk during exam periods.",
+      "PR.AC-4": "MFA is enforced via Conditional Access for all users with number matching; break-glass accounts are stored in a safe and monitored. Admin roles are time-bound via PIM.",
+      "PR.DS-1": "Encryption at rest uses Microsoft-managed keys; TLS 1.2+ enforced; private endpoints used for storage and databases; Defender for Cloud flags are remediated within 7 days.",
+      "PR.DS-4": "Purview DLP policies protect SSN/PCI/PHI across Exchange, SharePoint, and OneDrive; policy tips are enabled with auto-quarantine for high risk.",
+      "PR.PT-1": "Unified audit logging is enabled; Azure diagnostic settings forward to Log Analytics and Sentinel. Critical events (role changes, mailbox rules) are alerted in real-time.",
+      "DE.CM-1": "Defender for Cloud and Microsoft Sentinel provide continuous monitoring; analytic rules cover impossible travel, OAuth consent grants, and key vault access anomalies.",
+      "RS.RP-1": "An IR plan aligned to NIST is reviewed annually; communication templates and severity levels are defined for cloud incidents.",
+      "RS.MI-1": "Containment runbooks exist for compromised admin accounts and SharePoint data exposure; playbooks auto-disable tokens, reset creds, and revoke sessions.",
+      "RC.RP-1": "DR plans leverage Azure Backup and ASR; failover tests are performed semi-annually for Tier-1 services with documented results.",
+      "RC.IM-1": "After-action reviews occur within 10 business days; lessons learned feed backlog items and policy updates tracked to completion.",
+    };
+
+    const maturityById: Record<string, 0 | 1 | 2 | 3 | 4> = {
+      "GO.SC-1": 2,
+      "GO.RM-1": 1,
+      "ID.AM-1": 3,
+      "ID.AM-2": 2,
+      "ID.AM-3": 2,
+      "ID.BE-3": 2,
+      "PR.AC-4": 3,
+      "PR.DS-1": 3,
+      "PR.DS-4": 2,
+      "PR.PT-1": 2,
+      "DE.CM-1": 1,
+      "RS.RP-1": 2,
+      "RS.MI-1": 2,
+      "RC.RP-1": 3,
+      "RC.IM-1": 2,
+    };
+
     questions.forEach((q, i) => {
-      setValue(`responses.${i}.response` as const, `Sample response for ${q.id}: controls are documented and reviewed quarterly.`);
-      const m = (i % 5) as 0 | 1 | 2 | 3 | 4;
+      const txt = sampleById[q.id] || `Response for ${q.id}`;
+      const m = maturityById[q.id] ?? 2;
+      setValue(`responses.${i}.response` as const, txt);
       setValue(`responses.${i}.maturity` as const, m);
       const hidden = document.getElementById(`responses.${i}.maturity-hidden`) as HTMLInputElement | null;
       if (hidden) hidden.value = String(m);
@@ -315,6 +353,140 @@ export default function Index() {
     }
   }
 
+  function classifyRisk(m: number): "Sustainable" | "Moderate" | "Severe" | "Critical" {
+    if (m >= 4) return "Sustainable";
+    if (m === 3) return "Moderate";
+    if (m === 2) return "Severe";
+    return "Critical";
+  }
+
+  function computeFunctionAveragesLocal(responses: { meta: { nistFunction: string }; maturity: number }[]) {
+    const acc: Record<string, { total: number; count: number }> = {};
+    for (const r of responses) {
+      const k = r.meta.nistFunction;
+      if (!acc[k]) acc[k] = { total: 0, count: 0 };
+      acc[k].total += r.maturity;
+      acc[k].count += 1;
+    }
+    const out: Record<string, number> = {};
+    Object.entries(acc).forEach(([k, v]) => (out[k] = v.count ? v.total / v.count : 0));
+    return out;
+  }
+
+  function drawComplianceTable(doc: jsPDF, avgs: Record<string, number>, pr: number, pg: number, pb: number, paintedPages: Set<number>) {
+    const observation = (fn: string, avg: number) => {
+      if (avg < 1.5) {
+        switch (fn) {
+          case "GOVERN": return "Minimal leadership engagement, risk tolerance undefined";
+          case "IDENTIFY": return "Asset inventory incomplete, weak data flow mapping";
+          case "PROTECT": return "Controls inconsistent, MFA/segmentation gaps";
+          case "DETECT": return "No centralized monitoring or alerting";
+          case "RESPOND": return "Basic IR plan, not cloud-specific";
+          case "RECOVER": return "DR planning immature";
+          default: return "Needs improvement";
+        }
+      }
+      if (avg < 2.5) return "Developing capabilities with notable gaps";
+      return "Solid capability with room to optimize";
+    };
+    const rows = Object.entries(avgs).map(([fn, avg]) => [fn, avg.toFixed(2), observation(fn, avg)]);
+    autoTable(doc, {
+      startY: (doc as any).lastAutoTable?.finalY ? (doc as any).lastAutoTable.finalY + 12 : 100,
+      theme: "grid",
+      headStyles: { fillColor: [0, 0, 0], textColor: [255, 255, 255] },
+      bodyStyles: { cellPadding: 6, textColor: [255, 255, 255], fillColor: [0, 0, 0] },
+      styles: { fontSize: 10, lineColor: [pr, pg, pb], lineWidth: 0.5, fillColor: [0, 0, 0] },
+      head: [["Function", "Maturity Score", "Observations"]],
+      body: rows,
+      willDrawCell: () => {
+        const page = (doc as any).internal.getCurrentPageInfo().pageNumber;
+        if (!paintedPages.has(page)) {
+          drawPdfBackground(doc);
+          paintedPages.add(page);
+        }
+      },
+    });
+  }
+
+  function computeRiskCounts(responses: { maturity: number }[]) {
+    const levels = ["Sustainable", "Moderate", "Severe", "Critical"] as const;
+    const inherent: Record<typeof levels[number], number> = { Sustainable: 0, Moderate: 0, Severe: 0, Critical: 0 };
+    const residual: Record<typeof levels[number], number> = { Sustainable: 0, Moderate: 0, Severe: 0, Critical: 0 };
+    for (const r of responses) {
+      (inherent as any)[classifyRisk(r.maturity)] += 1;
+      (residual as any)[classifyRisk(Math.min(4, r.maturity + 1))] += 1;
+    }
+    return { inherent, residual, levels: Array.from(levels) };
+  }
+
+  function drawRiskDashboards(doc: jsPDF, counts: { inherent: Record<string, number>; residual: Record<string, number>; levels: string[] }, x: number, startY: number, pr: number, pg: number, pb: number, paintedPages: Set<number>) {
+    const total = Object.values(counts.inherent).reduce((a, b) => a + b, 0) || 1;
+    const toRows = (obj: Record<string, number>) => counts.levels.map(l => [l, String(obj[l] || 0), `${((100 * (obj[l] || 0)) / total).toFixed(2)}%`]);
+
+    doc.setFontSize(12);
+    doc.setTextColor(pr, pg, pb);
+    doc.text("Risk Dashboards", x, startY);
+
+    autoTable(doc, {
+      startY: startY + 10,
+      theme: "grid",
+      headStyles: { fillColor: [0, 0, 0], textColor: [255, 255, 255] },
+      bodyStyles: { cellPadding: 6, textColor: [255, 255, 255], fillColor: [0, 0, 0] },
+      styles: { fontSize: 10, lineColor: [pr, pg, pb], lineWidth: 0.5, fillColor: [0, 0, 0] },
+      head: [["Risk Level", "Count", "Percentage"]],
+      body: toRows(counts.inherent),
+      willDrawCell: () => {
+        const page = (doc as any).internal.getCurrentPageInfo().pageNumber;
+        if (!paintedPages.has(page)) { drawPdfBackground(doc); paintedPages.add(page); }
+      },
+    });
+
+    autoTable(doc, {
+      startY: (doc as any).lastAutoTable.finalY + 12,
+      theme: "grid",
+      headStyles: { fillColor: [0, 0, 0], textColor: [255, 255, 255] },
+      bodyStyles: { cellPadding: 6, textColor: [255, 255, 255], fillColor: [0, 0, 0] },
+      styles: { fontSize: 10, lineColor: [pr, pg, pb], lineWidth: 0.5, fillColor: [0, 0, 0] },
+      head: [["Risk Level", "Count", "Percentage"]],
+      body: toRows(counts.residual),
+      willDrawCell: () => {
+        const page = (doc as any).internal.getCurrentPageInfo().pageNumber;
+        if (!paintedPages.has(page)) { drawPdfBackground(doc); paintedPages.add(page); }
+      },
+    });
+  }
+
+  function drawRiskMatrixOverview(doc: jsPDF, x: number, startY: number, pr: number, pg: number, pb: number, paintedPages: Set<number>) {
+    const probs = ["Low", "Medium", "Medium-High", "High", "Critical"];
+    const impacts = ["Sustainable", "Moderate", "Severe", "Critical"];
+    const severity = ["Sustainable", "Moderate", "Severe", "Critical"];
+    const head = ["Probability → / Impact ↓", ...impacts];
+    const body = probs.map((p, pi) => {
+      const row = [p];
+      for (let i = 0; i < impacts.length; i++) {
+        const s = severity[Math.min(3, Math.max(i, pi - 1))];
+        row.push(s);
+      }
+      return row;
+    });
+    doc.setFontSize(12);
+    doc.setTextColor(pr, pg, pb);
+    doc.text("Risk Matrix Overview", x, startY);
+    autoTable(doc, {
+      startY: startY + 10,
+      theme: "grid",
+      headStyles: { fillColor: [0, 0, 0], textColor: [255, 255, 255] },
+      bodyStyles: { cellPadding: 6, textColor: [255, 255, 255], fillColor: [0, 0, 0] },
+      styles: { fontSize: 10, lineColor: [pr, pg, pb], lineWidth: 0.5, fillColor: [0, 0, 0] },
+      head: [head],
+      body,
+      willDrawCell: () => {
+        const page = (doc as any).internal.getCurrentPageInfo().pageNumber;
+        if (!paintedPages.has(page)) { drawPdfBackground(doc); paintedPages.add(page); }
+      },
+    });
+  }
+
   async function onSubmit(values: FormValues) {
     const submission: AssessmentSubmission = {
       organization: values.organization,
@@ -389,6 +561,7 @@ export default function Index() {
     let cursorY = 150;
 
     // --- AI Executive Summary ---
+    let aiRendered = false;
     try {
       const aiResp = await fetch("/api/assessments/generate-report", {
         method: "POST",
@@ -397,7 +570,7 @@ export default function Index() {
       });
       if (!aiResp.ok) {
         await aiResp.text();
-        toast.error("AI analysis failed");
+        toast.error("AI analysis failed (quota or key). Using local summary.");
       } else {
         const { report, metrics } = (await aiResp.json()) as any;
         doc.setFontSize(16);
@@ -421,10 +594,7 @@ export default function Index() {
           doc.text("Key Strengths", 40, cursorY + 18);
           doc.setTextColor(255, 255, 255);
           let y = cursorY + 34;
-          report.strengths.forEach((s: string) => {
-            const text = `• ${s}`;
-            y = writeParagraph(doc, text, 44, y, 516);
-          });
+          report.strengths.forEach((s: string) => { y = writeParagraph(doc, `• ${s}`, 44, y, 516); });
           cursorY = y;
         }
 
@@ -434,9 +604,7 @@ export default function Index() {
           doc.text("Identified Gaps & Risks", 40, cursorY + 18);
           doc.setTextColor(255, 255, 255);
           let y = cursorY + 34;
-          report.gaps.slice(0, 6).forEach((r: any) => {
-            y = writeParagraph(doc, `• ${r.name} — ${r.description || ""}`, 44, y, 516);
-          });
+          report.gaps.slice(0, 6).forEach((r: any) => { y = writeParagraph(doc, `• ${r.name} — ${r.description || ""}`, 44, y, 516); });
           cursorY = y;
         }
 
@@ -450,6 +618,8 @@ export default function Index() {
         doc.text("Compliance Alignment (NIST CSF)", 40, cursorY);
         doc.setTextColor(255, 255, 255);
         cursorY = writeParagraph(doc, report.compliance || "", 40, cursorY + 16, 520);
+        drawComplianceTable(doc, metrics?.functionAverages || {}, pr, pg, pb, paintedPages);
+        cursorY = (doc as any).lastAutoTable.finalY + 10;
 
         if (Array.isArray(report.recommendations) && report.recommendations.length) {
           doc.setFontSize(12);
@@ -476,12 +646,9 @@ export default function Index() {
             styles: { fontSize: 10, lineColor: [pr, pg, pb], lineWidth: 0.5, fillColor: [0, 0, 0] },
             head: [["Risk", "Likelihood", "Impact", "Rating"]],
             body: report.gaps.map((g: any) => [g.name, g.likelihood || "Medium", g.impact || "Medium", g.rating || "Medium"]),
-            willDrawCell: (data: any) => {
+            willDrawCell: () => {
               const page = (doc as any).internal.getCurrentPageInfo().pageNumber;
-              if (!paintedPages.has(page)) {
-                drawPdfBackground(doc);
-                paintedPages.add(page);
-              }
+              if (!paintedPages.has(page)) { drawPdfBackground(doc); paintedPages.add(page); }
             },
           });
           cursorY = (doc as any).lastAutoTable.finalY + 10;
@@ -493,6 +660,13 @@ export default function Index() {
         drawFunctionDashboard(doc, metrics?.functionAverages || {}, 40, cursorY + 34, 520, 14, [pr, pg, pb]);
         cursorY = cursorY + 34 + (Object.keys(metrics?.functionAverages || {}).length || 6) * 24;
 
+        drawRiskMatrixOverview(doc, 40, cursorY + 24, pr, pg, pb, paintedPages);
+        cursorY = (doc as any).lastAutoTable.finalY + 10;
+
+        const counts = computeRiskCounts(submission.responses);
+        drawRiskDashboards(doc, counts, 40, cursorY + 24, pr, pg, pb, paintedPages);
+        cursorY = (doc as any).lastAutoTable.finalY + 10;
+
         doc.addPage();
         drawPdfBackground(doc);
         paintedPages.add((doc as any).internal.getCurrentPageInfo().pageNumber);
@@ -502,9 +676,97 @@ export default function Index() {
         doc.text("Conclusion & Next Steps", 40, cursorY);
         doc.setTextColor(255, 255, 255);
         cursorY = writeParagraph(doc, report.conclusion || "", 40, cursorY + 16, 520);
+        aiRendered = true;
       }
     } catch (e) {
-      // Fallback: continue without AI content
+      toast.error("AI unavailable; generating local summary.");
+    }
+
+    if (!aiRendered) {
+      const avgs = computeFunctionAveragesLocal(submission.responses);
+      const overall = Object.values(avgs).reduce((a, b) => a + b, 0) / (Object.keys(avgs).length || 1);
+      const env = "Azure + Microsoft 365";
+      const strengths = Object.entries(avgs).filter(([, v]) => v >= 2.5).map(([k]) => `${k}: maturing capability`);
+      const gaps = Object.entries(avgs).filter(([, v]) => v < 1.5).map(([k]) => ({ name: `${k} capability gap`, likelihood: "Medium", impact: "High", rating: "Severe" }));
+      const recommendations = [
+        "Close MFA and conditional access gaps; enforce admin protections",
+        "Centralize logging to Sentinel and tune detections",
+        "Harden data protection with DLP coverage and private endpoints",
+        "Formalize cloud-specific IR and test DR scenarios",
+      ];
+      const summary = `This assessment summarizes your current cloud security posture. Average maturity is ${overall.toFixed(2)} of 4. Stronger areas include ${strengths.map(s=>s.split(":")[0]).join(", ") || "none"}. Lower-maturity areas should be prioritized to reduce exposure and align with NIST CSF.`;
+      const conclusion = `Improving low-maturity functions will reduce residual risk and support business continuity. Prioritize the recommendations over the next 90 days and track progress via KPIs.`;
+
+      doc.setFontSize(16);
+      doc.setTextColor(pr, pg, pb);
+      doc.text("Executive Summary", 40, cursorY);
+      doc.setFontSize(11);
+      doc.setTextColor(255, 255, 255);
+      cursorY = writeParagraph(doc, summary, 40, cursorY + 20, 520, 14);
+
+      doc.setFontSize(12);
+      doc.setTextColor(pr, pg, pb);
+      doc.text("Environment", 40, cursorY + 18);
+      doc.setTextColor(255, 255, 255);
+      cursorY = writeParagraph(doc, env, 40, cursorY + 34, 520);
+
+      if (strengths.length) {
+        doc.setFontSize(12);
+        doc.setTextColor(pr, pg, pb);
+        doc.text("Key Strengths", 40, cursorY + 18);
+        doc.setTextColor(255, 255, 255);
+        let y = cursorY + 34;
+        strengths.forEach((s: string) => { y = writeParagraph(doc, `• ${s}`, 44, y, 516); });
+        cursorY = y;
+      }
+
+      if (gaps.length) {
+        doc.setFontSize(12);
+        doc.setTextColor(pr, pg, pb);
+        doc.text("Identified Gaps & Risks", 40, cursorY + 18);
+        doc.setTextColor(255, 255, 255);
+        let y = cursorY + 34;
+        gaps.slice(0, 6).forEach((r: any) => { y = writeParagraph(doc, `• ${r.name}`, 44, y, 516); });
+        cursorY = y;
+      }
+
+      doc.addPage();
+      drawPdfBackground(doc);
+      paintedPages.add((doc as any).internal.getCurrentPageInfo().pageNumber);
+      cursorY = 60;
+
+      doc.setFontSize(12);
+      doc.setTextColor(pr, pg, pb);
+      doc.text("Compliance Alignment (NIST CSF)", 40, cursorY);
+      doc.setTextColor(255, 255, 255);
+      cursorY = writeParagraph(doc, "The table below summarizes average maturity by NIST function with brief observations.", 40, cursorY + 16, 520);
+      drawComplianceTable(doc, avgs, pr, pg, pb, paintedPages);
+      cursorY = (doc as any).lastAutoTable.finalY + 10;
+
+      doc.setFontSize(12);
+      doc.setTextColor(pr, pg, pb);
+      doc.text("Strategic Recommendations", 40, cursorY + 18);
+      doc.setTextColor(255, 255, 255);
+      let y2 = cursorY + 34;
+      recommendations.forEach((rec: string) => { y2 = writeParagraph(doc, `• ${rec}`, 44, y2, 516); });
+      cursorY = y2;
+
+      drawRiskMatrixOverview(doc, 40, cursorY + 24, pr, pg, pb, paintedPages);
+      cursorY = (doc as any).lastAutoTable.finalY + 10;
+
+      const counts = computeRiskCounts(submission.responses);
+      drawRiskDashboards(doc, counts, 40, cursorY + 24, pr, pg, pb, paintedPages);
+      cursorY = (doc as any).lastAutoTable.finalY + 10;
+
+      doc.addPage();
+      drawPdfBackground(doc);
+      paintedPages.add((doc as any).internal.getCurrentPageInfo().pageNumber);
+      cursorY = 60;
+      doc.setFontSize(12);
+      doc.setTextColor(pr, pg, pb);
+      doc.text("Conclusion & Next Steps", 40, cursorY);
+      doc.setTextColor(255, 255, 255);
+      cursorY = writeParagraph(doc, conclusion, 40, cursorY + 16, 520);
     }
 
     const functions: NistFunction[] = [
@@ -772,8 +1034,8 @@ export default function Index() {
           </Accordion>
 
           <div className="flex items-center justify-end gap-3">
-            <Button type="button" variant="outline" onClick={addTestData}>
-              Add Test Data
+            <Button type="button" variant="outline" onClick={addRealData}>
+              Add Real Data
             </Button>
             <Button type="submit" disabled={isSubmitting} className="gap-2">
               <Download className="h-4 w-4" /> Download Assessment
