@@ -213,8 +213,8 @@ export default function Index() {
   const { fields } = useFieldArray({ name: "responses", control });
 
   function addRealData() {
-    setValue("organization", "Contoso Education");
-    setValue("contactEmail", "secops@contoso.edu");
+    setValue("organization", "Contoso Education", { shouldDirty: true, shouldValidate: true });
+    setValue("contactEmail", "secops@contoso.edu", { shouldDirty: true, shouldValidate: true });
 
     const sampleById: Record<string, string> = {
       "GO.SC-1": "Cybersecurity risk is governed by the IT Governance Committee chaired by the CIO. Cloud risk is on the board agenda twice per year with KPIs covering MFA adoption, privileged access reviews, and incident MTTR.",
@@ -255,10 +255,14 @@ export default function Index() {
     questions.forEach((q, i) => {
       const txt = sampleById[q.id] || `Response for ${q.id}`;
       const m = maturityById[q.id] ?? 2;
-      setValue(`responses.${i}.response` as const, txt);
-      setValue(`responses.${i}.maturity` as const, m);
+      setValue(`responses.${i}.response` as const, txt, { shouldDirty: true, shouldValidate: true });
+      setValue(`responses.${i}.maturity` as const, m, { shouldDirty: true, shouldValidate: true });
       const hidden = document.getElementById(`responses.${i}.maturity-hidden`) as HTMLInputElement | null;
-      if (hidden) hidden.value = String(m);
+      if (hidden) {
+        hidden.value = String(m);
+        hidden.dispatchEvent(new Event("input", { bubbles: true }));
+        hidden.dispatchEvent(new Event("change", { bubbles: true }));
+      }
     });
   }
 
@@ -992,11 +996,16 @@ export default function Index() {
                               <Select
                                 defaultValue={`${fields[idx]?.maturity ?? 0}`}
                                 onValueChange={(v) => {
-                                  // React Hook Form manual set using hidden input binding
+                                  const num = Number(v) as 0 | 1 | 2 | 3 | 4;
+                                  setValue(`responses.${idx}.maturity` as const, num, { shouldDirty: true, shouldValidate: true });
                                   const input = document.getElementById(
                                     `responses.${idx}.maturity-hidden`,
                                   ) as HTMLInputElement | null;
-                                  if (input) input.value = v;
+                                  if (input) {
+                                    input.value = String(num);
+                                    input.dispatchEvent(new Event("input", { bubbles: true }));
+                                    input.dispatchEvent(new Event("change", { bubbles: true }));
+                                  }
                                 }}
                               >
                                 <SelectTrigger>
